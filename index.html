@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Planificateur VIP - Canada</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; color: #0f172a; overscroll-behavior-y: contain; background-color: #ffffff; }
+        
+        #map { height: 40vh; width: 100%; z-index: 10; }
+        @media (min-width: 1024px) {
+            #map { height: 100%; border-radius: 1.5rem; }
+            .main-container { height: calc(100vh - 120px); }
+        }
+
+        .filter-btn { transition: all 0.2s ease; position: relative; overflow: hidden; }
+        .filter-btn.active { background-color: #b91c1c; color: white; border-color: #b91c1c; }
+        .filter-btn.active-blue { background-color: #1d4ed8; color: white; border-color: #1d4ed8; }
+        .filter-btn.active-green { background-color: #15803d; color: white; border-color: #15803d; }
+        .filter-btn.active-purple { background-color: #a855f7; color: white; border-color: #a855f7; }
+        
+        .action-btn-geo { transition: all 0.2s; background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .action-btn-geo.active { background-color: #dc2626; color: white; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4); border-color: #dc2626;}
+
+        .content-scroll { -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
+        .card-shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); }
+        .card-item { transition: all 0.2s ease; border-radius: 0.75rem; padding: 0.75rem; border: 1px solid #f1f5f9; background: white; border-left: 3px solid transparent; }
+        .card-item:hover { transform: translateX(4px); background-color: #ffffff; border-color: #e2e8f0; border-left-color: #3b82f6; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .card-item.active-card { border-left-color: #dc2626; background-color: #f8fafc; }
+        
+        .btn-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem; transition: transform 0.1s active, background-color 0.2s; text-align: center; cursor: pointer; text-decoration: none; }
+        .btn-gps { background-color: #dc2626; color: white; border: 1px solid #dc2626; }
+        .btn-gps:active { transform: scale(0.98); background-color: #b91c1c; }
+        .btn-base { background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+        .btn-base:active { transform: scale(0.98); background-color: #e2e8f0; }
+
+        .status-open { background-color: #dcfce7; color: #166534; }
+        .status-closed { background-color: #fee2e2; color: #991b1b; }
+        .status-soon { background-color: #ffedd5; color: #9a3412; }
+        .status-trend { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Custom styling for the range slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        
+    </style>
+</head>
+<body class="h-screen overflow-hidden relative flex justify-center">
+
+<div id="toast-alert" class="fixed top-24 left-1/2 transform -translate-x-1/2 bg-slate-900/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl z-[9999] hidden opacity-0 transition-opacity duration-300 flex items-center gap-3 border border-slate-700 w-[90%] max-w-sm">
+    <span class="text-2xl">📍</span>
+    <span id="toast-message" class="font-bold text-sm leading-tight">Message</span>
+</div>
+
+<div id="bg-flag" class="fixed inset-0 z-[-1] pointer-events-none opacity-[0.04] transition-all duration-700" style="background-size: cover; background-position: center; background-attachment: fixed;"></div>
+<div class="fixed inset-0 z-[-2] pointer-events-none bg-slate-50"></div>
+
+<div class="w-full max-w-[1400px] h-full flex flex-col lg:p-6 relative">
+
+    <header class="p-4 lg:pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 flex-shrink-0 relative z-[2000]">
+        
+        <div class="flex justify-between w-full md:w-auto items-center">
+            
+            <button onclick="toggleCityPanel()" class="bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm border border-slate-100 w-full md:w-auto text-left hover:border-blue-400 hover:shadow-md transition group cursor-pointer flex flex-col justify-center">
+                <h1 class="text-xl lg:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center" id="main-title">
+                    Bienvenue <span class="ml-2" id="title-emblem">🇨🇦</span> <span class="ml-2 text-[10px] text-slate-300 group-hover:text-blue-500 transition mt-1">▼</span>
+                </h1>
+                <p class="text-blue-700 font-bold text-[10px] lg:text-[11px] uppercase tracking-widest mt-1" id="subtitle-text">Votre planificateur VIP</p>
+            </button>
+            
+            <div class="flex md:hidden gap-2 ml-4">
+                <button onclick="toggleCartPanel()" class="bg-white border border-slate-300 text-slate-700 text-xs rounded-lg px-2.5 py-2 font-bold shadow-sm flex items-center gap-1">
+                    <span class="text-base leading-none">📋</span>
+                    <span id="cart-count-mobile" class="bg-red-600 text-white rounded-full px-1.5 py-0.5 text-[9px]">0</span>
+                </button>
+                <div class="relative inline-block text-left">
+                    <button id="lang-btn-mobile" onclick="toggleLangMenu('mobile', event)" class="bg-white border border-slate-300 text-slate-700 text-xs rounded-lg px-2.5 py-2 font-bold shadow-sm flex items-center gap-2">
+                        <img id="current-flag-mobile" src="https://flagcdn.com/24x18/fr.png" alt="FR" class="w-4 h-3 object-cover rounded-[2px]">
+                        <span class="text-[8px] text-slate-400">▼</span>
+                    </button>
+                    <div id="lang-menu-mobile" class="hidden absolute right-0 mt-2 w-40 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 overflow-hidden border border-slate-100 z-[6000] max-h-60 overflow-y-auto">
+                        <button onclick="selectLang('fr', 'fr')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/fr.png" class="w-5 shadow-sm rounded-[2px]"> Français</button>
+                        <button onclick="selectLang('en', 'us')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/us.png" class="w-5 shadow-sm rounded-[2px]"> English</button>
+                        <button onclick="selectLang('es', 'es')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/es.png" class="w-5 shadow-sm rounded-[2px]"> Español</button>
+                        <button onclick="selectLang('pt', 'pt')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/pt.png" class="w-5 shadow-sm rounded-[2px]"> Português</button>
+                        <button onclick="selectLang('de', 'de')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/de.png" class="w-5 shadow-sm rounded-[2px]"> Deutsch</button>
+                        <button onclick="selectLang('ru', 'ru')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/ru.png" class="w-5 shadow-sm rounded-[2px]"> Русский</button>
+                        <button onclick="selectLang('uk', 'ua')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/ua.png" class="w-5 shadow-sm rounded-[2px]"> Українська</button>
+                        <button onclick="selectLang('zh', 'cn')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/cn.png" class="w-5 shadow-sm rounded-[2px]"> 中文</button>
+                        <button onclick="selectLang('ja', 'jp')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition"><img src="https://flagcdn.com/24x18/jp.png" class="w-5 shadow-sm rounded-[2px]"> 日本語</button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-4 md:mt-0 w-full md:w-auto md:ml-auto">
+            
+            <button onclick="toggleCartPanel()" class="hidden md:flex bg-white/90 backdrop-blur border border-slate-300 text-slate-700 text-xs rounded-lg px-3 py-2 font-bold shadow-sm items-center gap-2 h-full hover:bg-slate-50 transition">
+                <span class="text-base leading-none">📋</span>
+                <span id="cart-lbl">Ma liste</span>
+                <span id="cart-count-desktop" class="bg-red-600 text-white rounded-full px-1.5 py-0.5 text-[9px]">0</span>
+            </button>
+
+            <div class="relative hidden md:inline-block text-left">
+                <button id="lang-btn-desktop" onclick="toggleLangMenu('desktop', event)" class="bg-white/90 backdrop-blur border border-slate-300 text-slate-700 text-xs rounded-lg px-3 py-2 font-bold shadow-sm flex items-center gap-2 h-full hover:bg-slate-50 transition">
+                    <img id="current-flag-desktop" src="https://flagcdn.com/24x18/fr.png" alt="FR" class="w-4 h-3 object-cover rounded-[2px]">
+                    <span id="current-lang-text" class="uppercase">FR</span>
+                    <span class="text-[8px] text-slate-400 ml-1">▼</span>
+                </button>
+                <div id="lang-menu-desktop" class="hidden absolute right-0 mt-2 w-40 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 overflow-hidden border border-slate-100 z-[6000] max-h-60 overflow-y-auto custom-scroll">
+                    <button onclick="selectLang('fr', 'fr')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/fr.png" class="w-5 shadow-sm rounded-[2px]"> Français</button>
+                    <button onclick="selectLang('en', 'us')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/us.png" class="w-5 shadow-sm rounded-[2px]"> English</button>
+                    <button onclick="selectLang('es', 'es')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/es.png" class="w-5 shadow-sm rounded-[2px]"> Español</button>
+                    <button onclick="selectLang('pt', 'pt')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/pt.png" class="w-5 shadow-sm rounded-[2px]"> Português</button>
+                    <button onclick="selectLang('de', 'de')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/de.png" class="w-5 shadow-sm rounded-[2px]"> Deutsch</button>
+                    <button onclick="selectLang('ru', 'ru')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/ru.png" class="w-5 shadow-sm rounded-[2px]"> Русский</button>
+                    <button onclick="selectLang('uk', 'ua')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/ua.png" class="w-5 shadow-sm rounded-[2px]"> Українська</button>
+                    <button onclick="selectLang('zh', 'cn')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><img src="https://flagcdn.com/24x18/cn.png" class="w-5 shadow-sm rounded-[2px]"> 中文</button>
+                    <button onclick="selectLang('ja', 'jp')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition"><img src="https://flagcdn.com/24x18/jp.png" class="w-5 shadow-sm rounded-[2px]"> 日本語</button>
+                </div>
+            </div>
+            
+            <button onclick="openBaseModal()" class="w-full sm:w-auto bg-white/90 backdrop-blur hover:bg-red-50 text-red-700 px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition flex items-center justify-between gap-2 border border-red-200">
+                <span class="truncate max-w-[200px]" id="base-lbl">📍 Base: <span id="base-display">...</span></span>
+                <span class="opacity-50">⚙️</span>
+            </button>
+        </div>
+    </header>
+
+    <nav class="px-4 lg:px-0 mb-4 flex-shrink-0 relative z-50">
+        <div class="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-2 w-full">
+            
+            <div class="sticky left-0 z-20 pr-3 flex-shrink-0" style="background: linear-gradient(90deg, #f8fafc 85%, transparent 100%);">
+                <button onclick="toggleExploreArea()" id="btn-geo" class="action-btn-geo flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 bg-white relative overflow-hidden">
+                    🧭 <span id="tab-around">Autour d'ici</span>
+                </button>
+            </div>
+            
+            <div class="w-px h-6 bg-slate-300 mx-1 flex-shrink-0"></div>
+            
+            <button onclick="setFilter('sights')" id="btn-sights" class="filter-btn active flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
+                🏔️ <span id="tab-sights">À visiter</span>
+            </button>
+            <button onclick="setFilter('parks')" id="btn-parks" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
+                🌲 <span id="tab-parks">Parcs</span>
+            </button>
+            <button onclick="setFilter('kids')" id="btn-kids" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
+                🎠 <span id="tab-kids">Enfants</span>
+            </button>
+            <button onclick="setFilter('restaurants')" id="btn-restaurants" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
+                🍽️ <span id="tab-restaurants">Restaurants</span>
+            </button>
+            <button onclick="setFilter('hotels')" id="btn-hotels" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
+                🏨 <span id="tab-hotels">Hôtels</span>
+            </button>
+            <button onclick="setFilter('culture')" id="btn-culture" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2 transition-colors">
+                <span id="tab-culture-icon">🍁</span> <span id="tab-culture">Culture</span>
+            </button>
+            <button onclick="setFilter('events')" id="btn-events" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2 transition-colors">
+                📅 <span id="tab-events">Événements</span>
+            </button>
+            <button onclick="setFilter('tourist_offices')" id="btn-tourist_offices" class="filter-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm text-slate-600 bg-white/90 backdrop-blur shadow-sm flex items-center gap-2 transition-colors">
+                ℹ️ <span id="tab-tourist">Office de tourisme</span>
+            </button>
+            
+        </div>
+    </nav>
+
+    <main class="flex flex-col lg:grid lg:grid-cols-12 lg:gap-8 flex-grow overflow-hidden main-container relative z-10">
+        <div class="lg:col-span-7 h-[35vh] lg:h-full relative z-20 shadow-xl lg:shadow-none bg-slate-200/50 rounded-b-none lg:rounded-b-2xl overflow-hidden border border-slate-200">
+            <div id="map" class="h-full w-full"></div>
+            <div id="map-crosshair" class="absolute inset-0 pointer-events-none hidden items-center justify-center z-[1000]">
+                <div id="crosshair-icon" class="w-12 h-12 border-2 border-red-600 rounded-full flex items-center justify-center bg-red-600/10 shadow-lg transform transition-transform duration-500 scale-0">
+                    <div class="w-2 h-2 bg-red-600 rounded-full shadow animate-ping"></div>
+                    <div class="absolute w-2 h-2 bg-red-600 rounded-full shadow"></div>
+                </div>
+            </div>
+            <div class="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-3 py-1 rounded-full shadow-sm border border-slate-200 text-[10px] font-bold text-slate-600 pointer-events-none z-[1000] whitespace-nowrap">
+                💡 Clic droit sur la carte pour définir la Base
+            </div>
+        </div>
+
+        <div class="lg:col-span-5 flex flex-col overflow-hidden bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-slate-200">
+            <div class="flex flex-wrap justify-between items-end mb-4 flex-shrink-0 gap-4">
+                <h2 id="section-title" class="text-lg font-black uppercase tracking-wider text-slate-800 border-b-2 border-red-600 pb-1 inline-block">
+                    À visiter
+                </h2>
+                
+                <!-- Filtres: Limite avec slider -->
+                <div class="flex items-center gap-3">
+                    <label for="limit-selector" class="text-xs font-bold text-slate-500" id="lbl-show">Afficher:</label>
+                    <input type="range" id="limit-selector" min="1" max="20" value="10" oninput="onLimitChange()" class="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    <span id="limit-display" class="text-xs font-black text-blue-600 w-4 text-center">10</span>
+                </div>
+            </div>
+            
+            <div id="results-count" class="text-xs font-bold text-slate-500 mb-2">Chargement...</div>
+            
+            <div id="list-container" class="overflow-y-auto content-scroll space-y-4 pb-32 lg:pb-4 lg:pr-2">
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<div id="cart-backdrop" onclick="toggleCartPanel()" class="fixed inset-0 bg-slate-900/40 z-[9998] hidden opacity-0 transition-opacity duration-300"></div>
+<div id="cart-panel" class="fixed right-0 top-0 h-full w-full sm:w-[400px] bg-white shadow-2xl z-[9999] transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200">
+    <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="font-extrabold text-xl text-slate-800 flex items-center gap-2">📋 <span id="cart-panel-title">Ma liste</span></h3>
+        <button onclick="toggleCartPanel()" class="text-slate-400 hover:text-red-600 text-3xl font-bold transition">&times;</button>
+    </div>
+    <div class="px-5 py-2 bg-blue-50 text-blue-800 text-[10px] font-bold text-center border-b border-blue-100 uppercase" id="cart-order-msg">
+        L'ordre des lieux définit l'itinéraire GPS
+    </div>
+    <div id="cart-items" class="flex-1 overflow-y-auto custom-scroll p-4 space-y-3 bg-slate-50/50">
+        <p class="text-center text-slate-400 mt-10 text-sm font-semibold" id="cart-empty-msg">Votre liste est vide.</p>
+    </div>
+    <div class="p-5 border-t border-slate-100 bg-white">
+        <button onclick="checkoutCart()" class="w-full bg-red-600 text-white font-bold py-3.5 rounded-xl shadow-md hover:bg-red-700 transition flex justify-center items-center gap-2" id="cart-checkout-btn">
+            Créer l'itinéraire <span class="opacity-50 text-xs">🗺️</span>
+        </button>
+    </div>
+</div>
+
+<div id="city-backdrop" onclick="toggleCityPanel()" class="fixed inset-0 bg-slate-900/40 z-[9998] hidden opacity-0 transition-opacity duration-300"></div>
+<div id="city-panel" class="fixed left-0 top-0 h-full w-full sm:w-80 bg-white shadow-2xl z-[9999] transform -translate-x-full transition-transform duration-300 flex flex-col border-r border-slate-200">
+    <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="font-extrabold text-xl text-slate-800 flex items-center gap-2">🌍 <span id="city-panel-title">Destinations</span></h3>
+        <button onclick="toggleCityPanel()" class="text-slate-400 hover:text-red-600 text-3xl font-bold transition">&times;</button>
+    </div>
+    <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-3 bg-slate-50/50" id="city-list-container">
+    </div>
+</div>
+
+<div id="base-modal" class="fixed inset-0 bg-slate-900/60 z-[2000] hidden flex-col items-center justify-end md:justify-center transition-opacity">
+    <div class="bg-white rounded-t-3xl md:rounded-3xl p-6 w-full max-w-md shadow-2xl animate-slide-up border-t-4 border-red-600">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-extrabold text-xl text-slate-900" id="modal-title">Définir votre Base</h3>
+            <button onclick="closeBaseModal()" class="text-slate-400 hover:text-red-600 text-2xl font-bold transition">&times;</button>
+        </div>
+        <p class="text-xs text-slate-500 mb-6" id="modal-desc">Saisissez une adresse ou choisissez un hôtel dans la liste comme point de départ.</p>
+        <input type="text" id="custom-base-input" placeholder="ex: 123 Main St..." class="w-full p-4 border border-slate-300 rounded-xl mb-4 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button onclick="saveCustomBase()" id="modal-btn" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-blue-700 transition">
+            Valider l'adresse
+        </button>
+    </div>
+</div>
+
+<script>
+    let currentLang = 'fr';
+    let currentCityId = 'montreal';
+    let db = [];
+    let currentFilter = 'sights';
+    let map, markersLayer, baseMarkerLayer;
+    let isExploring = false;
+    let isMapFlying = false; 
+    let currentBase = {};
+    let cartItems = []; 
+    let toastTimeout;
+    let isLoading = false; 
+
+    const dateLocal = new Date();
+    const todayStr = dateLocal.getFullYear() + "-" + String(dateLocal.getMonth() + 1).padStart(2, '0') + "-" + String(dateLocal.getDate()).padStart(2, '0');
+    const gameDays = ["2026-05-14", "2026-05-15", "2026-05-16", "2026-05-20"]; 
+
+    const i18n = {
+        fr: {
+            title: "Bienvenue à {city}", subtitle: "Votre planificateur VIP - {province}", sights: "À visiter", rests: "Restaurants", hotels: "Hôtels",
+            around: "Autour d'ici", show: "Max:", route: "Itinéraire GPS", setBase: "Définir Base",
+            dist: "km", statusOpen: "Ouvert", statusClosed: "Fermé", statusSoon: "Bientôt", modalTitle: "Définir votre Base",
+            modalDesc: "Saisissez une adresse ou choisissez un hôtel dans la liste.", modalBtn: "Valider l'adresse", customBase: "Point sur la carte",
+            results: "Options", free: "Gratuit",
+            tooFar: "Vous êtes à plus de 100km. Rendez-nous visite !",
+            gpsError: "GPS non disponible. Retour à la base...",
+            cart: "Ma liste", addToList: "Ajouter", cartEmpty: "Votre liste est vide.", checkout: "Créer l'itinéraire", routeGenerated: "Itinéraire Google Maps ouvert !",
+            tourist: "Offices Tourisme", call: "Appeler", events: "Événements", culture: "Culture", parks: "Parcs", kids: "Enfants",
+            cities: "Villes", activeCity: "Actuellement", otherCities: "Autres destinations",
+            setAsBaseMap: "📍 Définir comme Base",
+            cartOrderMsg: "L'ordre des lieux définit l'itinéraire GPS"
+        },
+        en: {
+            title: "Welcome to {city}", subtitle: "Your VIP Planner - {province}", sights: "Top Sites", rests: "Restaurants", hotels: "Hotels",
+            around: "Explore Map", show: "Limit:", route: "Start GPS", setBase: "Set as Base",
+            dist: "km", statusOpen: "Open Now", statusClosed: "Closed", statusSoon: "Soon", modalTitle: "Set Your Base",
+            modalDesc: "Enter a custom address or choose a hotel from the list.", modalBtn: "Set Address", customBase: "Map Location",
+            results: "Options", free: "Free",
+            tooFar: "You are over 100km away. Come visit us!",
+            gpsError: "GPS unavailable. Returning to base...",
+            cart: "My List", addToList: "Add", cartEmpty: "Your list is empty.", checkout: "Create Itinerary", routeGenerated: "Google Maps route opened!",
+            tourist: "Info Centers", call: "Call", events: "Events", culture: "Culture", parks: "Parks", kids: "Kids",
+            cities: "Cities", activeCity: "Currently", otherCities: "Other destinations",
+            setAsBaseMap: "📍 Set this location as Base",
+            cartOrderMsg: "The order of places defines the GPS route"
+        },
+        es: {
+            title: "Bienvenido a {city}", subtitle: "Tu planificador VIP - {province}", sights: "Sitios Top", rests: "Restaurantes", hotels: "Hoteles",
+            around: "Explorar Mapa", show: "Máx:", route: "Iniciar GPS", setBase: "Fijar Base",
+            dist: "km", statusOpen: "Abierto", statusClosed: "Cerrado", statusSoon: "Pronto", modalTitle: "Fijar Base",
+            modalDesc: "Ingrese una dirección personalizada o elija un hotel de la lista.", modalBtn: "Confirmar", customBase: "Punto en el mapa",
+            results: "Opciones", free: "Gratis",
+            tooFar: "Estás a más de 100 km. ¡Ven a visitarnos!",
+            gpsError: "GPS no disponible. Volviendo a la base...",
+            cart: "Mi lista", addToList: "Añadir", cartEmpty: "Tu lista está vacía.", checkout: "Crear Itinerario", routeGenerated: "¡Ruta de Google Maps abierta!",
+            tourist: "Info Turismo", call: "Llamar", events: "Eventos", culture: "Cultura", parks: "Parques", kids: "Niños",
+            cities: "Ciudades", activeCity: "Actualmente", otherCities: "Otras destinos",
+            setAsBaseMap: "📍 Establecer como Base",
+            cartOrderMsg: "El orden define la ruta GPS"
+        },
+        pt: {
+            title: "Bem-vindo a {city}", subtitle: "Seu planejador VIP - {province}", sights: "Turismo", rests: "Restaurantes", hotels: "Hotéis",
+            around: "Explorar Mapa", show: "Máx:", route: "Iniciar GPS", setBase: "Definir Base",
+            dist: "km", statusOpen: "Aberto", statusClosed: "Fechado", statusSoon: "Em breve", modalTitle: "Definir sua Base",
+            modalDesc: "Insira um endereço ou escolha um hotel da lista.", modalBtn: "Confirmar", customBase: "Ponto no mapa",
+            results: "Opções", free: "Grátis",
+            tooFar: "Você está a mais de 100 km. Venha nos visitar!",
+            gpsError: "GPS indisponível. Retornando à base...",
+            cart: "Minha Lista", addToList: "Adicionar", cartEmpty: "Sua lista está vazia.", checkout: "Criar Itinerário", routeGenerated: "Rota do Google Maps aberta!",
+            tourist: "Info Turismo", call: "Ligar", events: "Eventos", culture: "Cultura", parks: "Parques", kids: "Crianças",
+            cities: "Cidades", activeCity: "Atualmente", otherCities: "Outras destinos",
+            setAsBaseMap: "📍 Definir como Base",
+            cartOrderMsg: "A ordem define a rota GPS"
+        },
+        de: {
+            title: "Willkommen in {city}", subtitle: "Ihr VIP-Planer - {province}", sights: "Attraktionen", rests: "Restaurants", hotels: "Hotels",
+            around: "Umgebung erkunden", show: "Max:", route: "GPS starten", setBase: "Als Basis",
+            dist: "km", statusOpen: "Geöffnet", statusClosed: "Geschlossen", statusSoon: "Bald", modalTitle: "Basis festlegen",
+            modalDesc: "Geben Sie eine Adresse ein oder wählen Sie ein Hotel.", modalBtn: "Bestätigen", customBase: "Punkt auf der Karte",
+            results: "Optionen", free: "Kostenlos",
+            tooFar: "Sie sind über 100 km entfernt. Besuchen Sie uns!",
+            gpsError: "GPS nicht verfügbar. Rückkehr zur Basis...",
+            cart: "Meine Liste", addToList: "Hinzufügen", cartEmpty: "Ihre Liste ist leer.", checkout: "Route erstellen", routeGenerated: "Google Maps Route geöffnet!",
+            tourist: "Touristeninfo", call: "Anrufen", events: "Veranstaltungen", culture: "Kultur", parks: "Parks", kids: "Kinder",
+            cities: "Städte", activeCity: "Aktuell", otherCities: "Andere Reiseziele",
+            setAsBaseMap: "📍 Als Basis festlegen",
+            cartOrderMsg: "Die Reihenfolge definiert die GPS-Route"
+        },
+        ru: {
+            title: "Добро пожаловать в {city}", subtitle: "Ваш VIP-планировщик - {province}", sights: "Места", rests: "Рестораны", hotels: "Отели",
+            around: "Искать здесь", show: "Макс:", route: "Маршрут GPS", setBase: "Сделать Базой",
+            dist: "км", statusOpen: "Открыто", statusClosed: "Закрыто", statusSoon: "Скоро", modalTitle: "Установить Базу",
+            modalDesc: "Введите адрес или выберите отель из списка.", modalBtn: "Подтвердить", customBase: "Точка на карте",
+            results: "Опции", free: "Бесплатно",
+            tooFar: "Вы более чем в 100 км от нас. Приезжайте в гости!",
+            gpsError: "GPS недоступен. Возврат к базе...",
+            cart: "Мой список", addToList: "Добавить", cartEmpty: "Ваш список пуст.", checkout: "Создать маршрут", routeGenerated: "Маршрут Google Maps открыт!",
+            tourist: "Информация", call: "Позвонить", events: "События", culture: "Культура", parks: "Парки", kids: "Детям",
+            cities: "Города", activeCity: "Сейчас", otherCities: "Другие направления",
+            setAsBaseMap: "📍 Установить как Базу",
+            cartOrderMsg: "Порядок определяет маршрут GPS"
+        },
+        uk: {
+            title: "Ласкаво просимо до {city}", subtitle: "Ваш VIP-планувальник - {province}", sights: "Місця", rests: "Ресторани", hotels: "Готелі",
+            around: "Шукати тут", show: "Макс:", route: "Маршрут GPS", setBase: "Зробити Базою",
+            dist: "км", statusOpen: "Відчинено", statusClosed: "Зачинено", statusSoon: "Скоро", modalTitle: "Встановити Базу",
+            modalDesc: "Введіть адресу або виберіть готель зі списку.", modalBtn: "Підтвердити", customBase: "Точка на карті",
+            results: "Опції", free: "Безкоштовно",
+            tooFar: "Ви більш ніж за 100 км від нас. Приїжджайте в гості!",
+            gpsError: "GPS недоступний. Повернення до бази...",
+            cart: "Мій список", addToList: "Додати", cartEmpty: "Ваш список порожній.", checkout: "Створити маршрут", routeGenerated: "Маршрут Google Maps відкрито!",
+            tourist: "Інформація", call: "Дзвонити", events: "Події", culture: "Культура", parks: "Парки", kids: "Дітям",
+            cities: "Міста", activeCity: "Зараз", otherCities: "Інші напрямки",
+            setAsBaseMap: "📍 Встановити як Базу",
+            cartOrderMsg: "Порядок визначає маршрут GPS"
+        },
+        zh: {
+            title: "欢迎来到 {city}", subtitle: "您的 VIP 行程规划 - {province}", sights: "景点", rests: "餐厅", hotels: "酒店",
+            around: "探索周边", show: "最多:", route: "GPS导航", setBase: "设为基地",
+            dist: "公里", statusOpen: "营业中", statusClosed: "已关闭", statusSoon: "即将营业", modalTitle: "设置您的基地",
+            modalDesc: "输入自定义地址或从列表中选择酒店。", modalBtn: "确认地址", customBase: "地图位置",
+            results: "选项", free: "免费",
+            tooFar: "您距离超过100公里。欢迎来访！",
+            gpsError: "GPS不可用。正在返回基地...",
+            cart: "我的清单", addToList: "添加", cartEmpty: "您的清单为空。", checkout: "生成路线", routeGenerated: "谷歌地图路线已打开！",
+            tourist: "旅游局", call: "呼叫", events: "活动", culture: "文化", parks: "公园", kids: "儿童",
+            cities: "城市", activeCity: "当前", otherCities: "其他目的地",
+            setAsBaseMap: "📍 设为基地",
+            cartOrderMsg: "顺序决定GPS路线"
+        },
+        ja: {
+            title: "{city}へようこそ", subtitle: "VIP旅行プランナー - {province}", sights: "観光名所", rests: "レストラン", hotels: "ホテル",
+            around: "周辺を検索", show: "最大:", route: "GPS開始", setBase: "拠点に設定",
+            dist: "km", statusOpen: "営業中", statusClosed: "閉業", statusSoon: "まもなく", modalTitle: "拠点を設定",
+            modalDesc: "カスタムアドレスを入力するか、リストからホテルを選択してください。", modalBtn: "設定する", customBase: "マップ上の位置",
+            results: "オプション", free: "無料",
+            tooFar: "100km以上離れています。ぜひお越しください！",
+            gpsError: "GPSが利用できません。ベースに戻ります...",
+            cart: "マイリスト", addToList: "追加", cartEmpty: "リストは空です。", checkout: "ルートを作成", routeGenerated: "Googleマップのルートが開きました！",
+            tourist: "観光情報", call: "電話する", events: "イベント", culture: "文化", parks: "公園", kids: "子供",
+            cities: "都市", activeCity: "現在", otherCities: "その他の目的地",
+            setAsBaseMap: "📍 拠点に設定",
+            cartOrderMsg: "順番がGPSルートを決定します"
+        }
+    };
+
+    const THEME_COLORS = { 
+        sights: '#047857', restaurants: '#ea580c', hotels: '#334155', tourist_offices: '#0284c7', events: '#8b5cf6', culture: '#1d4ed8', parks: '#15803d', kids: '#a855f7'
+    };
+
+    const iconsMap = {
+        'hotel': 'https://img.icons8.com/fluency/96/building.png', 'steakhouse': 'https://img.icons8.com/fluency/96/steak.png', 'asian': 'https://img.icons8.com/fluency/96/noodles.png',
+        'pub': 'https://img.icons8.com/fluency/96/beer.png', 'italian': 'https://img.icons8.com/fluency/96/pizza.png', 'french': 'https://img.icons8.com/fluency/96/wine-glass.png',
+        'historic': 'https://img.icons8.com/fluency/96/monument.png', 'park': 'https://img.icons8.com/fluency/96/national-park.png', 'entertainment': 'https://img.icons8.com/fluency/96/ferris-wheel.png',
+        'museum': 'https://img.icons8.com/fluency/96/museum.png', 'market': 'https://img.icons8.com/fluency/96/shopping-basket-2.png', 'office': 'https://img.icons8.com/fluency/96/info.png',
+        'festival': 'https://img.icons8.com/fluency/96/party-baloons.png', 'sports': 'https://img.icons8.com/fluency/96/stadium.png', 'music': 'https://img.icons8.com/fluency/96/musical-notes.png',
+        'poutine': 'https://img.icons8.com/fluency/96/french-fries.png', 'sugar': 'https://img.icons8.com/fluency/96/maple-leaf.png', 'kids': 'https://img.icons8.com/fluency/96/carousel.png',
+        'default_sight': 'https://img.icons8.com/fluency/96/camera.png'
+    };
+    function getIcon(category) { return iconsMap[category] || iconsMap['default_sight']; }
+
+    const defaultMock = {
+        zones: ["Centre-ville", "Quartier Historique", "Quartier des Affaires", "Secteur Touristique"],
+        names: {
+            sights: ["Point de Vue", "Place Historique", "Tour d'Observation", "Monument de la Ville"],
+            restaurants: ["Le Gourmet", "Bistro de la Place", "Grillhouse", "Table du Chef"],
+            hotels: ["Hôtel Central", "Auberge Royale", "Palace de la Ville", "Suite Exécutive"],
+            events: ["Festival d'Été", "Concert en plein air", "Événement Sportif", "Marché Éphémère"],
+            culture: ["Musée Régional", "Centre d'Art", "Marché Public", "Quartier des Artisans"],
+            parks: ["Parc Botanique", "Parc de la Rivière", "Grands Jardins", "Parc Nature"],
+            kids: ["Centre des Sciences", "Parc d'Attractions", "Zoo Régional", "Aquarium Local"],
+            tourist_offices: ["Office du Tourisme", "Centre Info-Visiteurs"]
+        }
+    };
+
+    const cities = {
+        'ottawa': { id: 'ottawa', name: 'Ottawa', province: 'Ontario', flag: 'https://upload.wikimedia.org/wikipedia/commons/8/88/Flag_of_Ontario.svg', emblemId: '🏛️', lat: 45.4215, lon: -75.6972, baseName: "Colline du Parlement", baseAddress: "Wellington St", cultureLabel: "Capitale", cultureIcon: "🍁", hasPremiumData: true, coreData: [
+            { id: 'ott_1', type: 'sights', name: "Colline du Parlement", address: "Wellington St", lat: 45.423, lon: -75.700, trend: "Incontournable", statusKey: "open", hours: "9h - 18h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('historic'), labelDisplay: "Monument" },
+            { id: 'ott_2', type: 'sights', name: "Canal Rideau", address: "Centre-ville", lat: 45.421, lon: -75.696, trend: "Patrimoine", statusKey: "open", hours: "24/7", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('park'), labelDisplay: "UNESCO" },
+            { id: 'ott_3', type: 'culture', name: "Musée des beaux-arts", address: "380 Sussex Dr", lat: 45.429, lon: -75.698, trend: "Art", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.culture, price: 20, iconUrl: getIcon('museum'), labelDisplay: "National" },
+            { id: 'ott_4', type: 'culture', name: "Musée canadien de l'histoire", address: "100 Laurier St, Gatineau", lat: 45.430, lon: -75.709, trend: "Histoire", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.culture, price: 22, iconUrl: getIcon('museum'), labelDisplay: "National" },
+            { id: 'ott_5', type: 'culture', name: "Marché By", address: "55 ByWard Market Sq", lat: 45.427, lon: -75.692, trend: "Gourmet", statusKey: "open", hours: "9h - 18h", color: THEME_COLORS.culture, price: 0, iconUrl: getIcon('market'), labelDisplay: "Historique" },
+            { id: 'ott_6', type: 'parks', name: "Parc de la Gatineau", address: "Gatineau", lat: 45.480, lon: -75.800, trend: "Nature", statusKey: "open", hours: "6h - 22h", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Forêt" },
+            { id: 'ott_7', type: 'restaurants', name: "Riviera", address: "62 Sparks St", lat: 45.423, lon: -75.698, trend: "Gastronomie", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 80, iconUrl: getIcon('french'), labelDisplay: "Banque rénovée" },
+            { id: 'ott_8', type: 'restaurants', name: "Beckta Dining & Wine", address: "150 Elgin St", lat: 45.421, lon: -75.692, trend: "Élégant", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 90, iconUrl: getIcon('french'), labelDisplay: "Fine Dining" },
+            { id: 'ott_9', type: 'hotels', name: "Fairmont Château Laurier", address: "1 Rideau St", lat: 45.425, lon: -75.695, trend: "Château", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Luxe" },
+            { id: 'ott_10', type: 'tourist_offices', name: "Tourisme Ottawa", address: "90 Wellington St", lat: 45.422, lon: -75.698, trend: "Officiel", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.tourist_offices, price: 0, iconUrl: getIcon('office'), labelDisplay: "Accueil" }
+        ]},
+        'quebec': { id: 'quebec', name: 'Québec', province: 'Québec', flag: 'https://upload.wikimedia.org/wikipedia/commons/5/5f/Flag_of_Quebec.svg', emblemId: '🏰', lat: 46.8139, lon: -71.2080, baseName: "Château Frontenac", baseAddress: "1 Rue des Carrières", cultureLabel: "Patrimoine", cultureIcon: "⚜️", hasPremiumData: true, coreData: [
+            { id: 'que_1', type: 'sights', name: "Château Frontenac", address: "1 Rue des Carrières", lat: 46.812, lon: -71.205, trend: "Icône", statusKey: "open", hours: "24/7", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('historic'), labelDisplay: "Monument" },
+            { id: 'que_2', type: 'sights', name: "Quartier Petit Champlain", address: "Rue du Petit Champlain", lat: 46.812, lon: -71.202, trend: "Historique", statusKey: "open", hours: "10h - 21h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('entertainment'), labelDisplay: "Shopping" },
+            { id: 'que_3', type: 'sights', name: "La Citadelle de Québec", address: "1 Côte de la Citadelle", lat: 46.808, lon: -71.206, trend: "Fortification", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.sights, price: 18, iconUrl: getIcon('historic'), labelDisplay: "Militaire" },
+            { id: 'que_4', type: 'parks', name: "Plaines d'Abraham", address: "Parc des Champs-de-Bataille", lat: 46.802, lon: -71.218, trend: "Histoire", statusKey: "open", hours: "24/7", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Parc Urbain" },
+            { id: 'que_5', type: 'parks', name: "Chute-Montmorency", address: "5300 Bd Sainte-Anne", lat: 46.890, lon: -71.147, trend: "Nature", statusKey: "open", hours: "9h - 18h", color: THEME_COLORS.parks, price: 8, iconUrl: getIcon('park'), labelDisplay: "Cascade" },
+            { id: 'que_6', type: 'culture', name: "Musée de la civilisation", address: "100 Rue Laurier", lat: 46.816, lon: -71.202, trend: "Expositions", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.culture, price: 22, iconUrl: getIcon('museum'), labelDisplay: "Musée" },
+            { id: 'que_7', type: 'restaurants', name: "Le Saint-Amour", address: "48 Rue Sainte-Ursule", lat: 46.813, lon: -71.211, trend: "Gastronomie", statusKey: "soon", hours: "17h30 - 22h", color: THEME_COLORS.restaurants, price: 90, iconUrl: getIcon('french'), labelDisplay: "Français" },
+            { id: 'que_8', type: 'restaurants', name: "L'Échaudé", address: "73 Rue du Sault-au-Matelot", lat: 46.815, lon: -71.202, trend: "Raffiné", statusKey: "open", hours: "11h30 - 22h", color: THEME_COLORS.restaurants, price: 70, iconUrl: getIcon('french'), labelDisplay: "Bistro" },
+            { id: 'que_9', type: 'hotels', name: "Auberge Saint-Antoine", address: "8 Rue Saint-Antoine", lat: 46.814, lon: -71.202, trend: "Boutique", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Relais & Châteaux" },
+            { id: 'que_10', type: 'tourist_offices', name: "Destination Québec Cité", address: "12 Rue Sainte-Anne", lat: 46.813, lon: -71.206, trend: "Officiel", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.tourist_offices, price: 0, iconUrl: getIcon('office'), labelDisplay: "Info" }
+        ]},
+        'toronto': { id: 'toronto', name: 'Toronto', province: 'Ontario', flag: 'https://upload.wikimedia.org/wikipedia/commons/8/88/Flag_of_Ontario.svg', emblemId: '🍁', lat: 43.6532, lon: -79.3832, baseName: "Mairie de Toronto", baseAddress: "100 Queen St W", cultureLabel: "Culture Ontario", cultureIcon: "🍁", hasPremiumData: true, coreData: [
+            { id: 'tor_1', type: 'sights', name: "CN Tower", address: "290 Bremner Blvd", lat: 43.642, lon: -79.387, trend: "Incontournable", statusKey: "open", hours: "9h - 21h", color: THEME_COLORS.sights, price: 43, iconUrl: getIcon('historic'), labelDisplay: "Vue" },
+            { id: 'tor_2', type: 'sights', name: "Casa Loma", address: "1 Austin Terrace", lat: 43.678, lon: -79.409, trend: "Château", statusKey: "open", hours: "9h30 - 17h", color: THEME_COLORS.sights, price: 30, iconUrl: getIcon('historic'), labelDisplay: "Historique" },
+            { id: 'tor_3', type: 'sights', name: "Distillery District", address: "55 Mill St", lat: 43.650, lon: -79.359, trend: "Quartier", statusKey: "open", hours: "10h - 21h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('entertainment'), labelDisplay: "Promenade" },
+            { id: 'tor_4', type: 'culture', name: "Royal Ontario Museum", address: "100 Queens Park", lat: 43.667, lon: -79.394, trend: "Histoire", statusKey: "open", hours: "10h - 17h30", color: THEME_COLORS.culture, price: 23, iconUrl: getIcon('museum'), labelDisplay: "Musée" },
+            { id: 'tor_5', type: 'culture', name: "Art Gallery of Ontario", address: "317 Dundas St W", lat: 43.653, lon: -79.392, trend: "Art", statusKey: "open", hours: "10h30 - 17h", color: THEME_COLORS.culture, price: 25, iconUrl: getIcon('museum'), labelDisplay: "Musée" },
+            { id: 'tor_6', type: 'culture', name: "St. Lawrence Market", address: "93 Front St E", lat: 43.648, lon: -79.371, trend: "Gourmet", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.culture, price: 0, iconUrl: getIcon('market'), labelDisplay: "Marché" },
+            { id: 'tor_7', type: 'parks', name: "Toronto Islands", address: "Jack Layton Ferry Terminal", lat: 43.640, lon: -79.377, trend: "Détente", statusKey: "open", hours: "Ferry", color: THEME_COLORS.parks, price: 9, iconUrl: getIcon('park'), labelDisplay: "Îles" },
+            { id: 'tor_8', type: 'parks', name: "High Park", address: "1873 Bloor St W", lat: 43.646, lon: -79.463, trend: "Nature", statusKey: "open", hours: "24/7", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Parc Urbain" },
+            { id: 'tor_9', type: 'restaurants', name: "Canoe", address: "66 Wellington St W", lat: 43.647, lon: -79.380, trend: "Gastronomie", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 100, iconUrl: getIcon('french'), labelDisplay: "Vue 54e étage" },
+            { id: 'tor_10', type: 'restaurants', name: "Alo", address: "163 Spadina Ave", lat: 43.648, lon: -79.395, trend: "Michelin", statusKey: "soon", hours: "17h - 23h", color: THEME_COLORS.restaurants, price: 150, iconUrl: getIcon('french'), labelDisplay: "Français" },
+            { id: 'tor_11', type: 'restaurants', name: "Richmond Station", address: "1 Richmond St W", lat: 43.651, lon: -79.379, trend: "Moderne", statusKey: "open", hours: "11h30 - 22h", color: THEME_COLORS.restaurants, price: 60, iconUrl: getIcon('steakhouse'), labelDisplay: "Canadien" },
+            { id: 'tor_12', type: 'hotels', name: "Fairmont Royal York", address: "100 Front St W", lat: 43.646, lon: -79.381, trend: "Historique", statusKey: "open", hours: "24/7", stars: 4, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Luxe" },
+            { id: 'tor_13', type: 'hotels', name: "The Ritz-Carlton", address: "181 Wellington St W", lat: 43.645, lon: -79.386, trend: "Luxe 5*", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Palace" },
+            { id: 'tor_14', type: 'kids', name: "Ripley's Aquarium", address: "288 Bremner Blvd", lat: 43.642, lon: -79.386, trend: "Découverte", statusKey: "open", hours: "9h - 21h", color: THEME_COLORS.kids, price: 44, iconUrl: getIcon('kids'), labelDisplay: "Aquarium" },
+            { id: 'tor_15', type: 'tourist_offices', name: "Destination Toronto", address: "Union Station", lat: 43.645, lon: -79.380, trend: "Officiel", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.tourist_offices, price: 0, iconUrl: getIcon('office'), labelDisplay: "Accueil" }
+        ]},
+        'montreal': { id: 'montreal', name: 'Montréal', province: 'Québec', flag: 'https://upload.wikimedia.org/wikipedia/commons/5/5f/Flag_of_Quebec.svg', emblemId: '⚜️', lat: 45.5017, lon: -73.5673, baseName: "Marriott Laval", baseAddress: "2255 Autoroute des Laurentides", cultureLabel: "Culture Qc", cultureIcon: "⚜️", hasPremiumData: true, coreData: [
+            { id: 'mtl_1', type: 'sights', name: "Vieux-Port de Montréal", address: "333 Rue de la Commune O", lat: 45.503, lon: -73.553, trend: "Incontournable", statusKey: "open", hours: "10h - 22h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('historic'), labelDisplay: "Promenade" },
+            { id: 'mtl_2', type: 'sights', name: "Belvédère du Mont-Royal", address: "1196 Voie Camillien-Houde", lat: 45.508, lon: -73.587, trend: "Panorama", statusKey: "open", hours: "6h - 00h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('default_sight'), labelDisplay: "Vue" },
+            { id: 'mtl_3', type: 'sights', name: "Basilique Notre-Dame", address: "110 Rue Notre-Dame O", lat: 45.504, lon: -73.556, trend: "Historique", statusKey: "open", hours: "9h - 16h", color: THEME_COLORS.sights, price: 15, iconUrl: getIcon('historic'), labelDisplay: "Monument" },
+            { id: 'mtl_4', type: 'sights', name: "Oratoire Saint-Joseph", address: "3800 Ch. Queen Mary", lat: 45.492, lon: -73.618, trend: "Patrimoine", statusKey: "open", hours: "6h - 21h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('historic'), labelDisplay: "Monument" },
+            { id: 'mtl_5', type: 'parks', name: "Jardin Botanique", address: "4101 Rue Sherbrooke E", lat: 45.559, lon: -73.558, trend: "Nature", statusKey: "open", hours: "9h - 18h", color: THEME_COLORS.parks, price: 22, iconUrl: getIcon('park'), labelDisplay: "Jardins" },
+            { id: 'mtl_6', type: 'parks', name: "Parc La Fontaine", address: "3933 Av. du Parc", lat: 45.526, lon: -73.568, trend: "Pique-Nique", statusKey: "open", hours: "24/7", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Parc Urbain" },
+            { id: 'mtl_7', type: 'parks', name: "Parc Jean-Drapeau", address: "1 Circuit Gilles Villeneuve", lat: 45.504, lon: -73.526, trend: "Plein Air", statusKey: "open", hours: "6h - 23h", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Îles" },
+            { id: 'mtl_8', type: 'restaurants', name: "Joe Beef", address: "2491 Rue Notre-Dame O", lat: 45.483, lon: -73.575, trend: "Gastronomie", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 80, iconUrl: getIcon('steakhouse'), labelDisplay: "Chef" },
+            { id: 'mtl_9', type: 'restaurants', name: "Toqué!", address: "900 Place Riopelle", lat: 45.503, lon: -73.562, trend: "Haute Cuisine", statusKey: "soon", hours: "17h30 - 22h", color: THEME_COLORS.restaurants, price: 120, iconUrl: getIcon('french'), labelDisplay: "R&C" },
+            { id: 'mtl_10', type: 'restaurants', name: "Gibbys", address: "298 Place d'Youville", lat: 45.501, lon: -73.555, trend: "Classique", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 70, iconUrl: getIcon('steakhouse'), labelDisplay: "Steakhouse" },
+            { id: 'mtl_11', type: 'restaurants', name: "L'Express", address: "3927 Rue Saint-Denis", lat: 45.520, lon: -73.575, trend: "Bistro", statusKey: "open", hours: "8h - 02h", color: THEME_COLORS.restaurants, price: 45, iconUrl: getIcon('french'), labelDisplay: "Français" },
+            { id: 'mtl_12', type: 'restaurants', name: "The Keg Steakhouse", address: "3035 Bd Le Carrefour", lat: 45.564, lon: -73.748, trend: "Confort", statusKey: "soon", hours: "16h - 23h", color: THEME_COLORS.restaurants, price: 60, iconUrl: getIcon('steakhouse'), labelDisplay: "Steak" },
+            { id: 'mtl_13', type: 'hotels', name: "Ritz-Carlton Montréal", address: "1228 Rue Sherbrooke O", lat: 45.498, lon: -73.578, trend: "Luxe 5*", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Palace" },
+            { id: 'mtl_14', type: 'hotels', name: "Fairmont Reine Elizabeth", address: "900 Blvd René-Lévesque", lat: 45.500, lon: -73.568, trend: "Historique", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Luxe" },
+            { id: 'mtl_15', type: 'culture', name: "Musée des Beaux-Arts", address: "1380 Rue Sherbrooke O", lat: 45.498, lon: -73.580, trend: "Art", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.culture, price: 24, iconUrl: getIcon('museum'), labelDisplay: "Musée" },
+            { id: 'mtl_16', type: 'culture', name: "Pointe-à-Callière", address: "350 Place Royale", lat: 45.502, lon: -73.554, trend: "Archéologie", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.culture, price: 25, iconUrl: getIcon('museum'), labelDisplay: "Musée" },
+            { id: 'mtl_17', type: 'kids', name: "Centre des Sciences", address: "2 Rue de la Commune O", lat: 45.504, lon: -73.551, trend: "Interactif", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.kids, price: 25, iconUrl: getIcon('kids'), labelDisplay: "Découverte" },
+            { id: 'mtl_18', type: 'tourist_offices', name: "Centre Infotouriste", address: "1255 Rue Peel", lat: 45.499, lon: -73.573, trend: "Officiel", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.tourist_offices, price: 0, iconUrl: getIcon('office'), labelDisplay: "Accueil" },
+            { id: 'mtl_19', type: 'culture', name: "Cabane à Sucre", address: "11382 Rang Fresnière", lat: 45.642, lon: -74.053, trend: "Tradition", statusKey: "open", hours: "Sur réservation", color: THEME_COLORS.culture, price: 85, iconUrl: getIcon('sugar'), labelDisplay: "Cabane" },
+            { id: 'mtl_20', type: 'restaurants', name: "Archibald Micro", address: "2330 Bd Curé-Labelle", lat: 45.617, lon: -73.832, trend: "Bière & Grill", statusKey: "open", hours: "11h - 23h", color: THEME_COLORS.restaurants, price: 30, iconUrl: getIcon('pub'), labelDisplay: "Pub" }
+        ]},
+        'vancouver': { id: 'vancouver', name: 'Vancouver', province: 'Colombie-Britannique', flag: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Flag_of_British_Columbia.svg', emblemId: '🌲', lat: 49.2827, lon: -123.1207, baseName: "Vancouver City Hall", baseAddress: "453 W 12th Ave", cultureLabel: "Culture C-B", cultureIcon: "🌲", hasPremiumData: true, coreData: [
+            { id: 'van_1', type: 'sights', name: "Stanley Park", address: "Vancouver, BC", lat: 49.301, lon: -123.141, trend: "Incontournable", statusKey: "open", hours: "6h - 22h", color: THEME_COLORS.sights, price: 0, iconUrl: getIcon('park'), labelDisplay: "Nature" },
+            { id: 'van_2', type: 'sights', name: "Capilano Suspension Bridge", address: "3735 Capilano Rd", lat: 49.342, lon: -123.114, trend: "Aventure", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.sights, price: 54, iconUrl: getIcon('historic'), labelDisplay: "Pont" },
+            { id: 'van_3', type: 'culture', name: "Granville Island", address: "1661 Duranleau St", lat: 49.271, lon: -123.134, trend: "Marché", statusKey: "open", hours: "9h - 18h", color: THEME_COLORS.culture, price: 0, iconUrl: getIcon('market'), labelDisplay: "Artisans" },
+            { id: 'van_4', type: 'culture', name: "Museum of Anthropology", address: "6393 NW Marine Dr", lat: 49.269, lon: -123.259, trend: "Autochtone", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.culture, price: 18, iconUrl: getIcon('museum'), labelDisplay: "UBC" },
+            { id: 'van_5', type: 'parks', name: "Queen Elizabeth Park", address: "4600 Cambie St", lat: 49.241, lon: -123.112, trend: "Botanique", statusKey: "open", hours: "6h - 22h", color: THEME_COLORS.parks, price: 0, iconUrl: getIcon('park'), labelDisplay: "Jardins" },
+            { id: 'van_6', type: 'restaurants', name: "Miku Vancouver", address: "200 Granville St", lat: 49.287, lon: -123.112, trend: "Aburi Sushi", statusKey: "open", hours: "11h30 - 22h", color: THEME_COLORS.restaurants, price: 70, iconUrl: getIcon('asian'), labelDisplay: "Japonais" },
+            { id: 'van_7', type: 'restaurants', name: "Hawksworth", address: "801 W Georgia St", lat: 49.283, lon: -123.118, trend: "Élégant", statusKey: "soon", hours: "17h - 22h", color: THEME_COLORS.restaurants, price: 90, iconUrl: getIcon('french'), labelDisplay: "Canadien Moderne" },
+            { id: 'van_8', type: 'hotels', name: "Fairmont Pacific Rim", address: "1038 Canada Pl", lat: 49.288, lon: -123.116, trend: "Luxe 5*", statusKey: "open", hours: "24/7", stars: 5, color: THEME_COLORS.hotels, iconUrl: getIcon('hotel'), labelDisplay: "Moderne" },
+            { id: 'van_9', type: 'kids', name: "Vancouver Aquarium", address: "845 Avison Way", lat: 49.300, lon: -123.131, trend: "Marin", statusKey: "open", hours: "10h - 17h", color: THEME_COLORS.kids, price: 42, iconUrl: getIcon('kids'), labelDisplay: "Stanley Park" },
+            { id: 'van_10', type: 'tourist_offices', name: "Vancouver Visitor Centre", address: "200 Burrard St", lat: 49.286, lon: -123.113, trend: "Officiel", statusKey: "open", hours: "9h - 17h", color: THEME_COLORS.tourist_offices, price: 0, iconUrl: getIcon('office'), labelDisplay: "Accueil" }
+        ]},
+        'victoria': { id: 'victoria', name: 'Victoria', province: 'Colombie-Britannique', flag: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Flag_of_British_Columbia.svg', emblemId: '⚓', lat: 48.4284, lon: -123.3656, baseName: "Parlement", baseAddress: "501 Belleville St", cultureLabel: "Culture C-B", cultureIcon: "🌲", hasPremiumData: false, coreData: [] },
+        'edmonton': { id: 'edmonton', name: 'Edmonton', province: 'Alberta', flag: 'https://upload.wikimedia.org/wikipedia/commons/f/f5/Flag_of_Alberta.svg', emblemId: '🤠', lat: 53.5461, lon: -113.4938, baseName: "Assemblée Législative", baseAddress: "10800 97 Ave NW", cultureLabel: "Culture AB", cultureIcon: "🌾", hasPremiumData: false, coreData: [] },
+        'regina': { id: 'regina', name: 'Regina', province: 'Saskatchewan', flag: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Flag_of_Saskatchewan.svg', emblemId: '🌾', lat: 50.4452, lon: -104.6189, baseName: "Assemblée Législative", baseAddress: "2405 Legislative Dr", cultureLabel: "Culture SK", cultureIcon: "🌻", hasPremiumData: false, coreData: [] },
+        'winnipeg': { id: 'winnipeg', name: 'Winnipeg', province: 'Manitoba', flag: 'https://upload.wikimedia.org/wikipedia/commons/c/c4/Flag_of_Manitoba.svg', emblemId: '🐻', lat: 49.8951, lon: -97.1384, baseName: "Palais Législatif", baseAddress: "450 Broadway", cultureLabel: "Culture MB", cultureIcon: "🍁", hasPremiumData: false, coreData: [] },
+        'fredericton': { id: 'fredericton', name: 'Fredericton', province: 'Nouveau-Brunswick', flag: 'https://upload.wikimedia.org/wikipedia/commons/f/fb/Flag_of_New_Brunswick.svg', emblemId: '⛵', lat: 45.9636, lon: -66.6431, baseName: "Assemblée Législative", baseAddress: "706 Queen St", cultureLabel: "Culture NB", cultureIcon: "🌲", hasPremiumData: false, coreData: [] },
+        'halifax': { id: 'halifax', name: 'Halifax', province: 'Nouvelle-Écosse', flag: 'https://upload.wikimedia.org/wikipedia/commons/c/c0/Flag_of_Nova_Scotia.svg', emblemId: '🦞', lat: 44.6488, lon: -63.5752, baseName: "Province House", baseAddress: "1726 Hollis St", cultureLabel: "Culture N-É", cultureIcon: "⚓", hasPremiumData: false, coreData: [] },
+        'charlottetown': { id: 'charlottetown', name: 'Charlottetown', province: 'Île-du-Prince-Édouard', flag: 'https://upload.wikimedia.org/wikipedia/commons/d/d7/Flag_of_Prince_Edward_Island.svg', emblemId: '🥔', lat: 46.2382, lon: -63.1311, baseName: "Province House", baseAddress: "165 Richmond St", cultureLabel: "Culture ÎPÉ", cultureIcon: "🏖️", hasPremiumData: false, coreData: [] },
+        'stjohns': { id: 'stjohns', name: "St. John's", province: 'Terre-Neuve-et-Labrador', flag: 'https://upload.wikimedia.org/wikipedia/commons/d/dd/Flag_of_Newfoundland_and_Labrador.svg', emblemId: '🐋', lat: 47.5615, lon: -52.7126, baseName: "Confederation Building", baseAddress: "100 Prince Philip Dr", cultureLabel: "Culture TNL", cultureIcon: "🌊", hasPremiumData: false, coreData: [] },
+        'whitehorse': { id: 'whitehorse', name: 'Whitehorse', province: 'Yukon', flag: 'https://upload.wikimedia.org/wikipedia/commons/6/69/Flag_of_Yukon.svg', emblemId: '🏔️', lat: 60.7212, lon: -135.0568, baseName: "Édifice de l'Administration", baseAddress: "2071 2nd Ave", cultureLabel: "Culture YT", cultureIcon: "⛏️", hasPremiumData: false, coreData: [] },
+        'yellowknife': { id: 'yellowknife', name: 'Yellowknife', province: 'Territoires du Nord-Ouest', flag: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_the_Northwest_Territories.svg', emblemId: '💎', lat: 62.4540, lon: -114.3718, baseName: "Assemblée Législative", baseAddress: "4570 48 St", cultureLabel: "Culture TNO", cultureIcon: "🌌", hasPremiumData: false, coreData: [] },
+        'iqaluit': { id: 'iqaluit', name: 'Iqaluit', province: 'Nunavut', flag: 'https://upload.wikimedia.org/wikipedia/commons/9/90/Flag_of_Nunavut.svg', emblemId: '❄️', lat: 63.7467, lon: -68.5170, baseName: "Assemblée Législative", baseAddress: "926 Federal Rd", cultureLabel: "Culture NU", cultureIcon: "🛷", hasPremiumData: false, coreData: [] }
+    };
+
+    function generateDummyCityData(city, existingData = []) {
+        let cityDb = [...existingData];
+        const cats = ['culture', 'sights', 'restaurants', 'hotels', 'events', 'parks', 'kids', 'tourist_offices'];
+        
+        cats.forEach(cat => {
+            let currentItems = cityDb.filter(i => i.type === cat).length;
+            let needed = 25 - currentItems; // On assure d'avoir au moins 25 lieux pour que le curseur fonctionne jusqu'à 20
+            
+            if (needed <= 0) return;
+            
+            let catNames = defaultMock.names[cat] || defaultMock.names['sights'];
+            
+            for (let i = 1; i <= needed; i++) {
+                let randomLat = city.lat + (Math.random() - 0.5) * 0.05; 
+                let randomLon = city.lon + (Math.random() - 0.5) * 0.05; 
+                let baseName = catNames[Math.floor(Math.random() * catNames.length)];
+                let zoneName = defaultMock.zones[Math.floor(Math.random() * defaultMock.zones.length)];
+                
+                cityDb.push({
+                    id: `${city.id || 'custom'}_${cat}_mock_${i}`, type: cat, name: `${baseName}`, address: `${zoneName}`,
+                    lat: randomLat, lon: randomLon, trend: "Découverte", statusKey: "open", hours: "Variable",
+                    color: THEME_COLORS[cat] || '#333', price: (cat==='parks'||cat==='tourist_offices') ? 0 : Math.floor(Math.random() * 20) + 15,
+                    iconUrl: getIcon(cat === 'restaurants' ? 'default_rest' : cat === 'parks' ? 'park' : cat === 'hotels' ? 'hotel' : 'default_sight'),
+                    labelDisplay: cat
+                });
+            }
+        });
+        return cityDb;
+    }
+
+    function loadCityData(cityId, customLat = null, customLon = null) {
+        isLoading = true;
+        const container = document.getElementById('list-container');
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-20 text-slate-500">
+                <div class="animate-spin text-4xl mb-4">✨</div>
+                <p class="font-bold">Chargement de la sélection VIP...</p>
+                <p class="text-xs mt-2 text-center px-4">Préparation des meilleures adresses.</p>
+            </div>`;
+        document.getElementById('results-count').innerText = "...";
+
+        setTimeout(() => {
+            const city = cities[cityId];
+            if (cityId === 'custom' || !city) {
+                db = generateDummyCityData({ lat: customLat, lon: customLon, id: 'custom', name: 'Zone VIP' }, []);
+            } else {
+                // Charge la sélection VIP et comble le reste avec la génération dynamique
+                db = generateDummyCityData(city, city.coreData || []);
+            }
+            
+            isLoading = false;
+            updateBaseDisplay();
+            setFilter(currentFilter);
+        }, 600);
+    }
+
+    function init() {
+        map = L.map('map', { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+        if (!L.Browser.mobile) L.control.zoom({ position: 'topleft' }).addTo(map);
+        
+        markersLayer = L.featureGroup().addTo(map);
+        baseMarkerLayer = L.featureGroup().addTo(map);
+
+        map.on('contextmenu', function(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            const btnText = i18n[currentLang].setAsBaseMap || "📍 Définir comme Base";
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(`<button onclick="setBaseFromMap(${lat}, ${lng})" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md hover:bg-blue-700 w-full text-center transition">${btnText}</button>`)
+                .openOn(map);
+        });
+
+        switchCity('montreal'); 
+    }
+
+    window.setBaseFromMap = function(lat, lng) {
+        const title = i18n[currentLang].customBase || "Point sur la carte";
+        currentBase = { name: title, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat: lat, lon: lng, isCustom: true };
+        
+        isExploring = false;
+        document.getElementById('btn-geo').classList.remove('active');
+        map.off('moveend', updateListByMapCenter);
+
+        map.closePopup();
+        showToast(currentLang === 'fr' ? "📍 Base mise à jour ! Création du périmètre VIP..." : "📍 Base updated! Building VIP perimeter...");
+        
+        currentFilter = 'sights';
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active', 'active-blue', 'active-green', 'active-purple'));
+        const sightsBtn = document.getElementById('btn-sights');
+        if (sightsBtn) sightsBtn.classList.add('active');
+        
+        map.setView([lat, lng], 13);
+        
+        loadCityData('custom', lat, lng);
+    }
+
+    function showToast(message) {
+        const toast = document.getElementById('toast-alert');
+        document.getElementById('toast-message').innerText = message;
+        toast.classList.remove('hidden');
+        void toast.offsetWidth;
+        toast.classList.remove('opacity-0');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => { toast.classList.add('hidden'); }, 300);
+        }, 4000);
+    }
+
+    function toggleLangMenu(type, e) {
+        e.stopPropagation();
+        const menu = document.getElementById('lang-menu-' + type);
+        menu.classList.toggle('hidden');
+    }
+
+    function toggleCityPanel() {
+        const panel = document.getElementById('city-panel');
+        const backdrop = document.getElementById('city-backdrop');
+        if (panel.classList.contains('-translate-x-full')) {
+            panel.classList.remove('-translate-x-full');
+            backdrop.classList.remove('hidden');
+            setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+        } else {
+            panel.classList.add('-translate-x-full');
+            backdrop.classList.add('opacity-0');
+            setTimeout(() => backdrop.classList.add('hidden'), 300);
+        }
+    }
+
+    function toggleCartItem(id) {
+        const index = cartItems.indexOf(id);
+        if (index > -1) {
+            cartItems.splice(index, 1);
+        } else {
+            cartItems.push(id);
+        }
+        document.getElementById('cart-count-mobile').innerText = cartItems.length;
+        document.getElementById('cart-count-desktop').innerText = cartItems.length;
+        renderList(); 
+        renderCartPanel(); 
+    }
+
+    function moveCartItem(index, direction) {
+        if (direction === -1 && index > 0) {
+            [cartItems[index - 1], cartItems[index]] = [cartItems[index], cartItems[index - 1]];
+        } else if (direction === 1 && index < cartItems.length - 1) {
+            [cartItems[index + 1], cartItems[index]] = [cartItems[index], cartItems[index + 1]];
+        }
+        renderCartPanel();
+    }
+
+    function renderCartPanel() {
+        const container = document.getElementById('cart-items');
+        if (cartItems.length === 0) {
+            container.innerHTML = `<p class="text-center text-slate-400 mt-10 text-sm font-semibold" id="cart-empty-msg">${i18n[currentLang].cartEmpty}</p>`;
+            return;
+        }
+        let html = '';
+        cartItems.forEach((id, index) => {
+            const item = db.find(i => i.id === id);
+            if (item) {
+                html += `
+                    <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex gap-3 items-center hover:border-blue-200 transition">
+                        <div class="flex flex-col gap-1 items-center justify-center border-r border-slate-100 pr-2">
+                            <button onclick="moveCartItem(${index}, -1)" class="text-slate-300 hover:text-blue-600 font-black p-1 transition" title="Monter">▲</button>
+                            <span class="text-[9px] font-bold text-slate-400">${index + 1}</span>
+                            <button onclick="moveCartItem(${index}, 1)" class="text-slate-300 hover:text-blue-600 font-black p-1 transition" title="Descendre">▼</button>
+                        </div>
+                        <img src="${item.iconUrl}" class="w-8 h-8 object-contain bg-slate-50 rounded-lg p-1 border border-slate-100">
+                        <div class="flex-1">
+                            <h4 class="text-xs font-extrabold text-slate-800 line-clamp-1">${item.name}</h4>
+                            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${item.labelDisplay}</p>
+                        </div>
+                        <button onclick="toggleCartItem('${item.id}')" class="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 rounded-full w-6 h-6 flex items-center justify-center font-bold transition">✕</button>
+                    </div>
+                `;
+            }
+        });
+        container.innerHTML = html;
+    }
+
+    function toggleCartPanel() {
+        const panel = document.getElementById('cart-panel');
+        const backdrop = document.getElementById('cart-backdrop');
+        if (panel.classList.contains('translate-x-full')) {
+            renderCartPanel();
+            panel.classList.remove('translate-x-full');
+            backdrop.classList.remove('hidden');
+            setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+        } else {
+            panel.classList.add('translate-x-full');
+            backdrop.classList.add('opacity-0');
+            setTimeout(() => backdrop.classList.add('hidden'), 300);
+        }
+    }
+    
+    function checkoutCart() {
+        if (cartItems.length === 0) {
+            showToast(i18n[currentLang].cartEmpty);
+            return;
+        }
+        const items = cartItems.map(id => db.find(i => i.id === id)).filter(Boolean);
+        let url = `https://www.google.com/maps/dir/?api=1`;
+        if (currentBase && currentBase.lat) url += `&origin=${currentBase.lat},${currentBase.lon}`;
+        if (items.length === 1) {
+            url += `&destination=${items[0].lat},${items[0].lon}`;
+        } else {
+            const destination = items.pop();
+            const waypoints = items.map(i => `${i.lat},${i.lon}`).join('|');
+            url += `&destination=${destination.lat},${destination.lon}&waypoints=${waypoints}`;
+        }
+        window.open(url, '_blank');
+        showToast(i18n[currentLang].routeGenerated);
+        toggleCartPanel(); 
+    }
+
+    window.addEventListener('click', function(e) {
+        if (!document.getElementById('lang-btn-mobile').contains(e.target) && !document.getElementById('lang-menu-mobile').contains(e.target)) { 
+            const menu = document.getElementById('lang-menu-mobile');
+            if (menu) menu.classList.add('hidden'); 
+        }
+        if (!document.getElementById('lang-btn-desktop').contains(e.target) && !document.getElementById('lang-menu-desktop').contains(e.target)) { 
+            const menuDesktop = document.getElementById('lang-menu-desktop');
+            if (menuDesktop) menuDesktop.classList.add('hidden'); 
+        }
+    });
+
+    function selectLang(langCode, flagCode) {
+        currentLang = langCode;
+        const flagUrl = `https://flagcdn.com/24x18/${flagCode}.png`;
+        document.getElementById('current-flag-mobile').src = flagUrl;
+        document.getElementById('current-flag-desktop').src = flagUrl;
+        document.getElementById('current-lang-text').innerText = langCode.toUpperCase();
+        
+        document.getElementById('lang-menu-mobile').classList.add('hidden');
+        document.getElementById('lang-menu-desktop').classList.add('hidden');
+        applyLanguage();
+        renderCityPanel();
+        renderCartPanel();
+    }
+
+    function switchCity(cityId) {
+        currentCityId = cityId;
+        const city = cities[currentCityId];
+        
+        document.getElementById('bg-flag').style.backgroundImage = `url('${city.flag}')`;
+        
+        let emblemHtml = city.emblemId;
+        if (gameDays.includes(todayStr)) {
+            if (cityId === 'montreal') emblemHtml = `<img src="https://upload.wikimedia.org/wikipedia/commons/6/69/Montreal_Canadiens.svg" class="inline-block drop-shadow-md" style="height: 1.25em; vertical-align: text-bottom;" onerror="this.outerHTML='⚜️'">`;
+            else if (cityId === 'toronto') emblemHtml = `<img src="https://upload.wikimedia.org/wikipedia/en/b/b6/Toronto_Maple_Leafs_2016_logo.svg" class="inline-block drop-shadow-md" style="height: 1.25em; vertical-align: text-bottom;" onerror="this.outerHTML='🍁'">`;
+            else if (cityId === 'vancouver') emblemHtml = `<img src="https://upload.wikimedia.org/wikipedia/en/3/3a/Vancouver_Canucks_logo.svg" class="inline-block drop-shadow-md" style="height: 1.25em; vertical-align: text-bottom;" onerror="this.outerHTML='🌲'">`;
+            else if (cityId === 'ottawa') emblemHtml = `<img src="https://upload.wikimedia.org/wikipedia/en/d/db/Ottawa_Senators.svg" class="inline-block drop-shadow-md" style="height: 1.25em; vertical-align: text-bottom;" onerror="this.outerHTML='🏛️'">`;
+        }
+        document.getElementById('title-emblem').innerHTML = emblemHtml;
+
+        document.getElementById('tab-culture-icon').innerText = city.cultureIcon;
+        document.getElementById('tab-culture').innerText = city.cultureLabel;
+
+        cartItems = []; 
+        document.getElementById('cart-count-mobile').innerText = "0";
+        document.getElementById('cart-count-desktop').innerText = "0";
+        renderCartPanel();
+        
+        if (map) {
+            map.setView([city.lat, city.lon], 11);
+        }
+        
+        if (!document.getElementById('city-panel').classList.contains('-translate-x-full')) {
+            toggleCityPanel();
+        }
+
+        applyLanguage();
+        renderCityPanel();
+        
+        currentBase = { name: city.baseName, address: city.baseAddress, lat: city.lat, lon: city.lon, isCustom: false };
+
+        loadCityData(cityId);
+    }
+
+    function renderCityPanel() {
+        const container = document.getElementById('city-list-container');
+        let html = `<div class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest px-2">${i18n[currentLang].activeCity}</div>`;
+        
+        const active = cities[currentCityId];
+        html += `
+            <div class="bg-blue-50 border-2 border-blue-500 rounded-xl p-3 flex items-center justify-between cursor-default mb-6">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${active.emblemId}</span>
+                    <div>
+                        <h4 class="font-bold text-blue-900">${active.name}</h4>
+                        <p class="text-[10px] text-blue-600 uppercase font-bold">${active.province}</p>
+                    </div>
+                </div>
+                <span class="w-3 h-3 bg-blue-500 rounded-full shadow-sm animate-pulse"></span>
+            </div>
+            <div class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest px-2">${i18n[currentLang].otherCities}</div>
+        `;
+
+        Object.keys(cities).forEach(key => {
+            if (key !== currentCityId) {
+                const c = cities[key];
+                const premiumTag = c.hasPremiumData ? `<span class="bg-emerald-100 text-emerald-700 text-[8px] px-1 rounded ml-1 font-bold">VIP</span>` : '';
+                html += `
+                    <a onclick="switchCity('${key}')" class="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer group mb-2 block">
+                        <div class="flex items-center gap-3 opacity-70 group-hover:opacity-100">
+                            <span class="text-2xl">${c.emblemId}</span>
+                            <div>
+                                <h4 class="font-bold text-slate-700">${c.name} ${premiumTag}</h4>
+                                <p class="text-[10px] text-slate-500 uppercase font-bold">${c.province}</p>
+                            </div>
+                        </div>
+                        <span class="text-slate-300 group-hover:text-slate-500 font-bold">➔</span>
+                    </a>
+                `;
+            }
+        });
+        container.innerHTML = html;
+    }
+
+    function applyLanguage() {
+        const t = i18n[currentLang];
+        const cityObj = cities[currentCityId];
+        
+        const titleStr = t.title.replace('{city}', cityObj.name);
+        const subStr = t.subtitle.replace('{province}', cityObj.province);
+        
+        const mainTitleElem = document.getElementById('main-title');
+        const emblemSpan = document.getElementById('title-emblem').outerHTML;
+        mainTitleElem.innerHTML = `${titleStr} ${emblemSpan} <span class="ml-2 text-[10px] text-slate-400 group-hover:text-blue-600 transition mt-1">▼</span>`;
+        
+        document.getElementById('subtitle-text').innerText = subStr;
+        
+        if(document.getElementById('tab-tourist')) document.getElementById('tab-tourist').innerText = t.tourist;
+        if(document.getElementById('tab-events')) document.getElementById('tab-events').innerText = t.events;
+        if(document.getElementById('tab-sights')) document.getElementById('tab-sights').innerText = t.sights;
+        if(document.getElementById('tab-restaurants')) document.getElementById('tab-restaurants').innerText = t.rests;
+        if(document.getElementById('tab-hotels')) document.getElementById('tab-hotels').innerText = t.hotels;
+        if(document.getElementById('tab-parks')) document.getElementById('tab-parks').innerText = t.parks;
+        if(document.getElementById('tab-kids')) document.getElementById('tab-kids').innerText = t.kids;
+        
+        document.getElementById('tab-around').innerText = t.around;
+        document.getElementById('lbl-show').innerText = t.show;
+        document.getElementById('modal-title').innerText = t.modalTitle;
+        document.getElementById('modal-desc').innerText = t.modalDesc;
+        document.getElementById('modal-btn').innerText = t.modalBtn;
+        
+        document.getElementById('cart-lbl').innerText = t.cart;
+        document.getElementById('cart-panel-title').innerText = t.cart;
+        if(document.getElementById('cart-order-msg')) document.getElementById('cart-order-msg').innerText = t.cartOrderMsg;
+        if(document.getElementById('cart-empty-msg')) document.getElementById('cart-empty-msg').innerText = t.cartEmpty;
+        document.getElementById('cart-checkout-btn').innerHTML = `${t.checkout} <span class="opacity-50 text-xs">🗺️</span>`;
+
+        if(document.getElementById('city-panel-title')) document.getElementById('city-panel-title').innerText = t.cities;
+
+        if (isExploring) updateListByMapCenter();
+        else {
+            if (!isLoading) {
+                renderList();
+                updateMap(true);
+            }
+        }
+    }
+
+    function getTranslatedStatus(key) {
+        const t = i18n[currentLang];
+        if(key === 'open') return { text: t.statusOpen, css: "status-open" };
+        if(key === 'closed') return { text: t.statusClosed, css: "status-closed" };
+        if(key === 'soon') return { text: t.statusSoon, css: "status-soon" };
+        return { text: key, css: "bg-slate-100 text-slate-600" };
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return (R * c).toFixed(1);
+    }
+
+    function toggleExploreArea() {
+        const btn = document.getElementById('btn-geo');
+        const originalText = document.getElementById('tab-around').innerText;
+        const city = cities[currentCityId];
+        
+        if (isExploring) {
+            isExploring = false;
+            btn.classList.remove('active');
+            map.off('moveend', updateListByMapCenter);
+            db.forEach(item => delete item.dist);
+            renderList();
+            updateMap(true);
+        } else {
+            document.getElementById('tab-around').innerText = "...";
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        document.getElementById('tab-around').innerText = originalText;
+                        const userLat = position.coords.latitude;
+                        const userLon = position.coords.longitude;
+                        const distFromCity = calculateDistance(userLat, userLon, city.lat, city.lon);
+                        
+                        if (distFromCity > 100) {
+                            showToast(i18n[currentLang].tooFar);
+                            revertToBase();
+                        } else {
+                            isMapFlying = true;
+                            map.flyTo([userLat, userLon], 13, { duration: 1.5 });
+                            map.once('moveend', () => { isMapFlying = false; activateExploreMode(btn); });
+                        }
+                    },
+                    (error) => {
+                        document.getElementById('tab-around').innerText = originalText;
+                        showToast(i18n[currentLang].gpsError);
+                        revertToBase();
+                    },
+                    { timeout: 4000 }
+                );
+            } else {
+                document.getElementById('tab-around').innerText = originalText;
+                showToast(i18n[currentLang].gpsError);
+                revertToBase();
+            }
+        }
+    }
+
+    function revertToBase() {
+        setTimeout(() => {
+            const city = cities[currentCityId];
+            const targetLat = currentBase.lat || city.lat;
+            const targetLon = currentBase.lon || city.lon;
+            isMapFlying = true;
+            map.flyTo([targetLat, targetLon], 13, { duration: 1.5 });
+            map.once('moveend', () => { isMapFlying = false; });
+        }, 3000);
+    }
+
+    function activateExploreMode(btn) {
+        isExploring = true;
+        btn.classList.add('active');
+        updateListByMapCenter();
+        map.on('moveend', updateListByMapCenter);
+    }
+
+    function highlightOnMap(id, lat, lon) {
+        document.querySelectorAll('.card-item').forEach(card => card.classList.remove('active-card'));
+        const targetCard = document.getElementById('card-' + id);
+        if (targetCard) targetCard.classList.add('active-card');
+
+        if(typeof markersLayer === 'undefined') return;
+
+        markersLayer.eachLayer(marker => {
+            if (marker.options.itemId === id) {
+                let highlightColor = THEME_COLORS[currentFilter] || '#dc2626';
+                marker.setStyle({ fillColor: highlightColor, radius: 12, weight: 3 }); 
+                marker.openPopup();
+                marker.bringToFront();
+            } else {
+                marker.setStyle({ fillColor: marker.options.defaultColor, radius: 7, weight: 2 });
+            }
+        });
+
+        isMapFlying = true;
+        map.flyTo([lat, lon], 14, { duration: 1 });
+        map.once('moveend', () => { setTimeout(() => { isMapFlying = false; }, 300); });
+    }
+
+    function updateListByMapCenter() {
+        if(!isExploring || isMapFlying || isLoading) return;
+        const center = map.getCenter();
+        db.forEach(item => {
+            if(item.lat && item.lon) item.dist = parseFloat(calculateDistance(center.lat, center.lng, item.lat, item.lon));
+            else item.dist = 9999;
+        });
+        renderList();
+        updateMap(false); 
+    }
+
+    function getFilteredAndSortedData() {
+        const limit = parseInt(document.getElementById('limit-selector').value);
+        
+        let filtered = db.filter(item => {
+            if (item.type !== currentFilter) return false;
+            return true;
+        });
+        
+        if (isExploring) filtered.sort((a, b) => (a.dist || 9999) - (b.dist || 9999));
+        else filtered.sort((a, b) => (a.baseDist || 9999) - (b.baseDist || 9999));
+        
+        return {
+            totalCount: filtered.length,
+            items: filtered.slice(0, limit)
+        };
+    }
+
+    function onLimitChange() { 
+        const limitVal = document.getElementById('limit-selector').value;
+        document.getElementById('limit-display').innerText = limitVal;
+        if(!isLoading) { 
+            renderList(); 
+            updateMap(!isExploring); 
+        } 
+    }
+
+    function setFilter(category) {
+        currentFilter = category;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active', 'active-blue', 'active-green', 'active-purple');
+        });
+        
+        const activeBtn = document.getElementById(`btn-${category}`);
+        if (activeBtn) {
+            if (category === 'culture') activeBtn.classList.add('active-blue');
+            else if (category === 'parks') activeBtn.classList.add('active-green');
+            else if (category === 'kids') activeBtn.classList.add('active-purple');
+            else activeBtn.classList.add('active');
+        }
+
+        const t = i18n[currentLang];
+        const city = cities[currentCityId] || cities['montreal']; // Fallback in case of issue
+        const titles = { 
+            'culture': `${city.cultureIcon || '🍁'} ${city.cultureLabel || 'Culture'}`,
+            'sights': `🏔️ ${t.sights}`, 
+            'restaurants': `🍽️ ${t.rests}`, 
+            'hotels': `🏨 ${t.hotels}`,
+            'tourist_offices': `ℹ️ ${t.tourist}`,
+            'events': `📅 ${t.events}`,
+            'parks': `🌲 ${t.parks}`,
+            'kids': `🎠 ${t.kids}`
+        };
+        
+        const sectionTitle = document.getElementById('section-title');
+        sectionTitle.innerText = titles[category] || category;
+        
+        sectionTitle.className = "text-lg font-black uppercase tracking-wider text-slate-800 border-b-2 pb-1 inline-block";
+        if (category === 'culture') sectionTitle.classList.add('border-blue-700');
+        else if (category === 'parks') sectionTitle.classList.add('border-green-600');
+        else if (category === 'kids') sectionTitle.classList.add('border-purple-500');
+        else sectionTitle.classList.add('border-red-600');
+
+        if (isExploring) updateListByMapCenter();
+        else {
+            if (!isLoading) {
+                renderList();
+                updateMap(true);
+            }
+        }
+    }
+
+    function renderList() {
+        if (isLoading) return;
+
+        const container = document.getElementById('list-container');
+        const countDisplay = document.getElementById('results-count');
+        const t = i18n[currentLang];
+        
+        const dataObj = getFilteredAndSortedData(); 
+        const filteredData = dataObj.items;
+        
+        countDisplay.innerText = `${filteredData.length} / ${dataObj.totalCount} ${t.results}`;
+
+        if (filteredData.length === 0) {
+            container.innerHTML = `<div class="text-center py-10 text-slate-400 font-semibold">${t.noResults || 'Aucun résultat'}</div>`;
+            return;
+        }
+
+        let html = '';
+        filteredData.forEach(item => {
+            const gpsLink = `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lon}`;
+            const statusInfo = getTranslatedStatus(item.statusKey);
+            
+            const isItemInCart = cartItems.includes(item.id);
+            const cartBtnClass = isItemInCart ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200';
+            const cartBtnIcon = isItemInCart ? '✓' : '+';
+            const cartBtnText = isItemInCart ? '' : t.addToList;
+
+            let gpsBtnClass = 'btn-gps';
+            if (currentFilter === 'culture') gpsBtnClass = 'bg-blue-700 hover:bg-blue-800 border-blue-700 text-white';
+            else if (currentFilter === 'parks') gpsBtnClass = 'bg-green-700 hover:bg-green-800 border-green-700 text-white';
+            else if (currentFilter === 'kids') gpsBtnClass = 'bg-purple-600 hover:bg-purple-700 border-purple-600 text-white';
+
+            let actionButtons = `<a href="${gpsLink}" onclick="event.stopPropagation();" target="_blank" rel="noopener noreferrer" class="btn-action ${gpsBtnClass} flex-1">🗺️ <span class="hidden sm:inline">${t.route}</span></a>`;
+
+            if (item.phone) {
+                actionButtons += `<a href="tel:${item.phone.replace(/[\s-]/g, '')}" onclick="event.stopPropagation();" class="btn-action bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 flex-1 shadow-sm transition-all font-bold">📞 <span class="hidden sm:inline">${t.call}</span></a>`;
+            }
+
+            if (item.type !== 'tourist_offices') {
+                actionButtons += `<button onclick="event.stopPropagation(); toggleCartItem('${item.id}');" class="btn-action ${cartBtnClass} flex-none w-10 sm:w-auto sm:flex-1 shadow-sm transition-all font-bold"><span class="text-base leading-none">${cartBtnIcon}</span> <span class="hidden sm:inline">${cartBtnText}</span></button>`;
+            }
+
+            if(currentFilter === 'hotels') {
+                actionButtons += `<button onclick="event.stopPropagation(); setBaseFromId('${item.id}');" class="btn-action btn-base flex-none w-10 sm:w-auto sm:flex-1 text-slate-600">📍 <span class="hidden sm:inline">${t.setBase}</span></button>`;
+            }
+
+            let distColorClass = 'bg-red-50 text-red-700 border-red-100';
+            if (currentFilter === 'culture') distColorClass = 'bg-blue-50 text-blue-700 border-blue-100';
+            else if (currentFilter === 'parks') distColorClass = 'bg-green-50 text-green-700 border-green-100';
+            else if (currentFilter === 'kids') distColorClass = 'bg-purple-50 text-purple-700 border-purple-100';
+            
+            let displayDist = isExploring ? item.dist : item.baseDist;
+            let distStr = displayDist !== undefined ? parseFloat(displayDist).toFixed(1) : '';
+            const distBadge = displayDist !== undefined ? `<span class="${distColorClass} border font-bold px-2 py-1 rounded text-[9px] uppercase shadow-sm">📍 ${distStr} ${t.dist}</span>` : '';
+            
+            let priceBadge = '';
+            if (item.price !== undefined) {
+                const priceText = item.price === 0 ? t.free : `${item.price}$`;
+                const priceColor = item.price === 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-700 border-slate-200";
+                priceBadge = `<span class="${priceColor} border font-bold px-2 py-1 rounded text-[9px] uppercase shadow-sm">🎟️ ${priceText}</span>`;
+            }
+
+            let starsHTML = (item.type === 'hotels' && item.stars) ? `<div class="text-[8px] tracking-widest mb-0.5 text-amber-400" title="${item.stars} Étoiles">${'★'.repeat(item.stars)}</div>` : '';
+            
+            let mediaContent = `
+                <div class="w-full h-full flex flex-col items-center justify-center bg-white/60 rounded-xl shadow-inner border border-slate-200 py-2">
+                    <img src="${item.iconUrl}" alt="${item.labelDisplay}" class="w-12 h-12 object-contain drop-shadow-sm mb-1">
+                    ${starsHTML}
+                    <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center px-1">${item.labelDisplay}</span>
+                </div>
+            `;
+
+            let cardHoverClass = 'hover:border-red-500';
+            if (currentFilter === 'culture') cardHoverClass = 'hover:border-blue-500';
+            else if (currentFilter === 'parks') cardHoverClass = 'hover:border-green-500';
+            else if (currentFilter === 'kids') cardHoverClass = 'hover:border-purple-500';
+
+            html += `
+                <div id="card-${item.id}" onclick="highlightOnMap('${item.id}', ${item.lat}, ${item.lon})" class="card-item bg-white/90 backdrop-blur-sm p-3 rounded-2xl card-shadow relative overflow-hidden flex flex-col sm:flex-row gap-4 border border-slate-200 ${cardHoverClass}">
+                    <div class="w-full sm:w-28 h-32 sm:h-auto flex-shrink-0 relative">
+                        ${mediaContent}
+                    </div>
+                    <div class="flex-1 flex flex-col justify-between relative z-10">
+                        <div>
+                            <div class="flex justify-between items-start mb-1">
+                                <h3 class="font-extrabold text-slate-900 text-sm leading-tight pr-2">${item.name}</h3>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mb-2">
+                                ${priceBadge}
+                                ${distBadge}
+                                <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded status-trend shadow-sm">${item.trend}</span>
+                                <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm ${statusInfo.css}">${statusInfo.text}</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mb-0.5 font-semibold">📍 ${item.address}</p>
+                            ${item.phone ? `<p class="text-[10px] text-blue-600 mb-0.5 font-bold">📞 ${item.phone}</p>` : ''}
+                            <p class="text-[9px] text-slate-400 mb-2">🕒 ${item.hours}</p>
+                        </div>
+                        <div class="flex flex-row gap-2 mt-auto">
+                            ${actionButtons}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+        container.style.opacity = '0';
+        setTimeout(() => { container.style.opacity = '1'; }, 50);
+    }
+
+    function updateMap(flyToFitBounds = true) {
+        if(isLoading || typeof markersLayer === 'undefined') return;
+        markersLayer.clearLayers();
+        
+        const dataToRender = getFilteredAndSortedData().items; 
+        
+        dataToRender.forEach(item => {
+            if (item.lat && item.lon) {
+                let starsHTML = (item.type === 'hotels' && item.stars) ? `<div class="text-[8px] tracking-widest mb-1 text-amber-400">${'★'.repeat(item.stars)}</div>` : '';
+                let popupMedia = `
+                    <div class="flex flex-col items-center justify-center mb-1">
+                        <img src="${item.iconUrl}" class="w-10 h-10 object-contain drop-shadow-sm mb-1">
+                        ${starsHTML}
+                    </div>
+                `;
+                const marker = L.circleMarker([item.lat, item.lon], {
+                    radius: 7, fillColor: item.color, color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 1,
+                    itemId: item.id, defaultColor: item.color 
+                }).bindPopup(`
+                    <div class="text-center p-1 w-32">
+                        ${popupMedia}
+                        <b class="text-[10px] leading-tight block text-slate-800">${item.name}</b>
+                        ${item.phone ? `<p class="text-[9px] text-blue-600 mt-1">${item.phone}</p>` : ''}
+                    </div>
+                `);
+                markersLayer.addLayer(marker);
+            }
+        });
+
+        if (flyToFitBounds && markersLayer.getLayers().length > 0) {
+            requestAnimationFrame(() => {
+                map.invalidateSize(true);
+                const bounds = markersLayer.getBounds();
+                if (bounds.isValid()) {
+                    setTimeout(() => {
+                        const size = map.getSize();
+                        if(size.x > 0 && size.y > 0) map.flyToBounds(bounds, { padding: [30, 30], duration: 1.2, maxZoom: 13 });
+                    }, 150);
+                }
+            });
+        }
+    }
+
+    function openBaseModal() { document.getElementById('base-modal').classList.remove('hidden'); document.getElementById('base-modal').classList.add('flex'); }
+    function closeBaseModal() { document.getElementById('base-modal').classList.add('hidden'); document.getElementById('base-modal').classList.remove('flex'); }
+
+    function saveCustomBase() {
+        const input = document.getElementById('custom-base-input').value.trim();
+        if(input) {
+            currentBase = { name: i18n[currentLang].customBase, address: input, isCustom: true };
+            updateBaseDisplay();
+            closeBaseModal();
+        }
+    }
+
+    function setBaseFromId(id) {
+        const hotel = db.find(h => h.id === id);
+        if(hotel) {
+            currentBase = { name: hotel.name, address: hotel.address, lat: hotel.lat, lon: hotel.lon, isCustom: false };
+            updateBaseDisplay();
+        }
+    }
+
+    function updateBaseDisplay() {
+        document.getElementById('base-display').innerText = currentBase.name;
+        if(typeof baseMarkerLayer !== 'undefined') {
+            baseMarkerLayer.clearLayers();
+            if(currentBase.lat && currentBase.lon) {
+                L.circleMarker([currentBase.lat, currentBase.lon], {
+                    radius: 12, fillColor: "#000000", color: "#ffffff", weight: 3, opacity: 1, fillOpacity: 0.8
+                }).bindPopup(`<b>⭐ BASE</b><br>${currentBase.name}`).addTo(baseMarkerLayer);
+            }
+        }
+        if (currentBase.lat && currentBase.lon) {
+            db.forEach(item => {
+                if (item.lat && item.lon) item.baseDist = parseFloat(calculateDistance(currentBase.lat, currentBase.lon, item.lat, item.lon));
+                else item.baseDist = 9999;
+            });
+        }
+        if (typeof map !== 'undefined' && !isLoading) onLimitChange(); 
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
